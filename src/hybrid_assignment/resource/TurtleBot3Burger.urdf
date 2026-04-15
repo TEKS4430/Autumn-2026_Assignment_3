@@ -1,0 +1,49 @@
+<?xml version="1.0" ?>
+<robot name="TurtleBot3Burger">
+  <webots>
+
+    <device reference="LDS-01" type="Lidar">
+      <ros>
+        <enabled>true</enabled>
+        <updateRate>10</updateRate>
+        <topicName>/scan</topicName>
+        <frameName>base_scan</frameName>
+        <alwaysOn>true</alwaysOn>
+      </ros>
+    </device>
+
+    <plugin type="webots_ros2_driver::Ros2IMU">
+      <enabled>true</enabled>
+      <updateRate>50</updateRate>
+      <topicName>/imu</topicName>
+      <frameName>imu_link</frameName>
+      <alwaysOn>true</alwaysOn>
+      <gyroName>gyro</gyroName>
+      <accelerometerName>accelerometer</accelerometerName>
+    </plugin>
+
+    <!-- Python plugin: handles cmd_vel → motors directly -->
+    <plugin type="sensing_assignment.robot_driver.RobotDriver" />
+
+    <device reference="Astra rgb" type="Camera">
+      <ros>
+        <enabled>true</enabled>
+        <updateRate>10</updateRate>
+        <topicName>/camera/image_raw</topicName>
+        <frameName>camera_link</frameName>
+        <alwaysOn>true</alwaysOn>
+      </ros>
+    </device>
+
+    <device reference="Astra depth" type="RangeFinder">
+      <ros>
+        <enabled>true</enabled>
+        <updateRate>10</updateRate>
+        <topicName>/camera/depth/image_raw</topicName>
+        <frameName>camera_link</frameName>
+        <alwaysOn>true</alwaysOn>
+      </ros>
+    </device>
+
+  </webots>
+</robot>
