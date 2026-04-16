@@ -23,7 +23,7 @@
     </plugin>
 
     <!-- Python plugin: handles cmd_vel → motors directly -->
-    <plugin type="sensing_assignment.robot_driver.RobotDriver" />
+    <plugin type="hybrid_assignment.robot_driver.RobotDriver" />
 
     <device reference="Astra rgb" type="Camera">
       <ros>

@@ -14,7 +14,7 @@ services:
     build:
       context: ./docker
       dockerfile: Dockerfile
-    image: course-ros2:jazzy
+    image: course-ros2-assignment3:jazzy
     # Let Docker Compose generate container names to avoid
     # conflicts when multiple instances or previous containers exist.
 
