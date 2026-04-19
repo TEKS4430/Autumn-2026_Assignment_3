@@ -1,80 +1,68 @@
-#!/usr/bin/env python3
 """
-task1_behaviours.py  —  STUDENT TASK 1
+task1_behaviours.py
+====================
+Leaf behaviour classes for the hybrid reactive-deliberative assignment.
 
-Goal: Implement the three leaf behaviours that the behavior tree will use.
+Official docs to read before starting:
+  Behaviours (lifecycle, update, Status):
+    https://py-trees.readthedocs.io/en/devel/behaviours.html
+  Status values (SUCCESS / FAILURE / RUNNING):
+    https://py-trees.readthedocs.io/en/devel/behaviours.html#status
 
-A behaviour tree is made up of leaf nodes (Conditions and Actions) connected
-by composite nodes (Sequence and Fallback). In this task you implement the
-leaves. In Task 2 you connect them into a tree.
+Each class inherits from py_trees.behaviour.Behaviour and must implement
+update() → py_trees.common.Status.
 
-Each leaf inherits from py_trees.behaviour.Behaviour and must implement
-the update() method, which returns one of:
-    py_trees.common.Status.SUCCESS   — the behaviour completed successfully
-    py_trees.common.Status.FAILURE   — the behaviour failed or condition is false
-    py_trees.common.Status.RUNNING   — the behaviour is still in progress
-
-The three behaviours you implement:
-
-    1. IsObstacleTooClose  (Condition)
-       Checks whether the LiDAR detects anything closer than a threshold
-       in the forward arc of the robot.
-       Returns SUCCESS if obstacle is too close (danger!).
-       Returns FAILURE if the path ahead is clear.
-
-    2. StopRobot  (Action)
-       Publishes zero velocity to /cmd_vel to stop the robot immediately.
-       Returns SUCCESS immediately after publishing.
-
-    3. MoveToWaypoint  (Action)
-       Drives the robot toward the current target waypoint using odometry.
-       Returns RUNNING while the robot is still moving toward the waypoint.
-       Returns SUCCESS when the robot is close enough to the waypoint.
-
-How these connect to the hybrid architecture:
-    - IsObstacleTooClose + StopRobot  →  the REACTIVE layer
-      (fast, direct sensor-to-action, no planning)
-    - MoveToWaypoint                  →  the DELIBERATIVE layer
-      (goal-directed, uses odometry to reason about position)
+Do NOT import or call anything from task2_tree.py here.
 """
 
 import math
+
 import py_trees
 import rclpy
 from geometry_msgs.msg import TwistStamped
-from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import LaserScan
+
+# ---------------------------------------------------------------------------
+# Tuning constants — adjust these if the robot behaves poorly, but understand
+# what each one does before changing it.
+# ---------------------------------------------------------------------------
+
+OBSTACLE_THRESHOLD = 0.5   # metres — stop if anything is closer than this
+FORWARD_ARC_DEG    = 30    # degrees — half-width of the forward danger cone
+                           # (so the full cone is 2 × FORWARD_ARC_DEG wide)
+
+WAYPOINT_TOLERANCE = 0.3   # metres — how close = "arrived"
+LINEAR_SPEED       = 0.3   # m/s    — forward speed while navigating
+ANGULAR_GAIN       = 1.5   # rad/s per rad of heading error (P-controller gain)
 
 
-# ── Tuning parameters ─────────────────────────────────────────
-OBSTACLE_THRESHOLD = 0.4    # metres — stop if anything closer than this
-FORWARD_ARC_DEG    = 30     # degrees each side of forward to check
-WAYPOINT_TOLERANCE = 0.25   # metres — close enough to count as arrived
-LINEAR_SPEED       = 0.15   # m/s — speed toward waypoint
-ANGULAR_GAIN       = 1.5    # turning gain (higher = sharper turns)
+# ---------------------------------------------------------------------------
+# Condition node
+# ---------------------------------------------------------------------------
 
-
-# ─────────────────────────────────────────────────────────────
-# Behaviour 1: IsObstacleTooClose  (Condition leaf)
-#
-# This is the reactive layer's sensor check.
-# It reads the latest /scan message and checks the forward arc.
-#
-# The LiDAR gives 360 readings, one per degree (index 0 = forward,
-# increasing counter-clockwise). The forward arc is roughly:
-#   indices 0..FORWARD_ARC_DEG  and  360-FORWARD_ARC_DEG..359
-#
-# Returns SUCCESS  if any valid ray in that arc is < OBSTACLE_THRESHOLD
-# Returns FAILURE  if the path ahead is clear (or no scan received yet)
-# ─────────────────────────────────────────────────────────────
 class IsObstacleTooClose(py_trees.behaviour.Behaviour):
+    """
+    Condition: is anything in the forward LiDAR arc closer than
+    OBSTACLE_THRESHOLD metres?
 
-    def __init__(self, node):
+    Returns
+    -------
+    SUCCESS  — obstacle detected (danger)
+    FAILURE  — path is clear (safe to navigate)
+
+    The ROS node is passed in so this behaviour can create its own
+    subscriber without being a Node itself.
+    """
+
+    def __init__(self, ros_node):
+        # Give the behaviour a human-readable name — it appears in the
+        # console tree printout.
         super().__init__(name='IsObstacleTooClose')
-        self.ros_node   = node
-        self.latest_scan = None
+        self.ros_node    = ros_node
+        self.latest_scan = None   # populated by the subscriber callback
 
-        # Subscribe to the raw LiDAR topic
+        # Subscribe to the LiDAR topic.
         self.ros_node.create_subscription(
             LaserScan, '/scan', self._scan_callback, 10)
 
@@ -82,129 +70,161 @@ class IsObstacleTooClose(py_trees.behaviour.Behaviour):
         self.latest_scan = msg
 
     def update(self):
-        # TODO 1a: Check for obstacles in the forward arc
+        # ------------------------------------------------------------------
+        # TODO 1a — implement the obstacle check.
         #
-        # 1. If self.latest_scan is None, return FAILURE (no data yet)
+        # Step 1: Guard — if no scan has arrived yet, return FAILURE so the
+        #         robot does not falsely stop on startup.
         #
-        # 2. The scan has len(msg.ranges) readings.
-        #    Work out how many indices correspond to FORWARD_ARC_DEG:
-        #      total = len(self.latest_scan.ranges)
-        #      arc   = int(FORWARD_ARC_DEG / 360 * total)
+        # Step 2: Compute how many indices cover FORWARD_ARC_DEG degrees:
+        #             total = len(self.latest_scan.ranges)
+        #             arc   = int(FORWARD_ARC_DEG / 360 * total)
         #
-        # 3. Check indices 0..arc (left of forward) and
-        #                  total-arc..total (right of forward)
-        #    For each index, check if the reading is valid and close:
-        #      r = self.latest_scan.ranges[i]
-        #      if not math.isinf(r) and r > 0.0 and r < OBSTACLE_THRESHOLD:
-        #          return py_trees.common.Status.SUCCESS
+        # Step 3: Iterate over the front-left arc (indices 0 … arc-1) and
+        #         the front-right arc (indices total-arc … total-1).
+        #         Combine them in one loop with:
+        #             list(range(arc)) + list(range(total - arc, total))
         #
-        # 4. If no close obstacle found, return FAILURE
-        return py_trees.common.Status.FAILURE  # replace this
+        # Step 4: For each index, get the range value:
+        #             r = self.latest_scan.ranges[i]
+        #         Skip readings that are inf (open space) or <= 0 (invalid).
+        #         If r < OBSTACLE_THRESHOLD → return Status.SUCCESS.
+        #
+        # Step 5: If the loop finishes without finding anything close,
+        #         return Status.FAILURE.
+        # ------------------------------------------------------------------
+
+        raise NotImplementedError("TODO 1a: implement IsObstacleTooClose.update()")
 
 
-# ─────────────────────────────────────────────────────────────
-# Behaviour 2: StopRobot  (Action leaf)
-#
-# This is the reactive layer's action.
-# Publish zero velocity immediately and return SUCCESS.
-# Simple and fast — no reasoning needed.
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Action node — stop
+# ---------------------------------------------------------------------------
+
 class StopRobot(py_trees.behaviour.Behaviour):
+    """
+    Action: publish a zero-velocity TwistStamped and return SUCCESS.
 
-    def __init__(self, node):
+    This node is always instant — it never returns RUNNING.
+    """
+
+    def __init__(self, ros_node):
         super().__init__(name='StopRobot')
-        self.ros_node = node
+        self.ros_node  = ros_node
         self.publisher = self.ros_node.create_publisher(
             TwistStamped, '/cmd_vel', 10)
 
     def update(self):
-        # TODO 1b: Publish zero velocity and return SUCCESS
+        # ------------------------------------------------------------------
+        # TODO 1b — publish a zero-velocity command.
         #
-        # Create a TwistStamped message with all zeros and publish it.
-        # Then return py_trees.common.Status.SUCCESS.
+        # Hint: A freshly constructed TwistStamped() already has all
+        # velocity fields set to 0.0 — you only need to fill in the stamp
+        # so downstream nodes know the message is current.
         #
-        # Hint:
-        #   msg = TwistStamped()
-        #   msg.header.stamp = self.ros_node.get_clock().now().to_msg()
-        #   self.publisher.publish(msg)
-        return py_trees.common.Status.SUCCESS  # replace with full implementation
+        #     msg = TwistStamped()
+        #     msg.header.stamp = self.ros_node.get_clock().now().to_msg()
+        #     self.publisher.publish(msg)
+        #
+        # Return Status.SUCCESS — stopping is always considered successful.
+        # ------------------------------------------------------------------
+
+        raise NotImplementedError("TODO 1b: implement StopRobot.update()")
 
 
-# ─────────────────────────────────────────────────────────────
-# Behaviour 3: MoveToWaypoint  (Action leaf)
-#
-# This is the deliberative layer.
-# Drives the robot toward a list of waypoints in order.
-# Uses odometry to know where the robot is.
-#
-# Logic:
-#   - If we have arrived at the current waypoint → advance to next
-#     and return SUCCESS (tree will re-tick next cycle)
-#   - If all waypoints visited → return SUCCESS and stop
-#   - Otherwise → compute direction to waypoint, publish velocity,
-#     return RUNNING
-# ─────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Action node — navigate
+# ---------------------------------------------------------------------------
+
 class MoveToWaypoint(py_trees.behaviour.Behaviour):
+    """
+    Action: drive the robot toward the current waypoint using a simple
+    proportional heading controller fed by odometry.
 
-    def __init__(self, node, waypoints):
-        """
-        waypoints: list of (x, y) tuples in the Webots world frame.
-        Example: [(1.0, 0.0), (1.0, 1.0), (0.0, 0.0)]
-        """
+    Returns
+    -------
+    RUNNING  — still driving toward the waypoint
+    SUCCESS  — arrived (within WAYPOINT_TOLERANCE); index advanced
+    FAILURE  — all waypoints have been visited
+
+    Parameters
+    ----------
+    ros_node  : the ROS 2 node (provides clock, publisher, subscriber)
+    waypoints : list of (x, y) tuples in the order they should be visited
+    """
+
+    def __init__(self, ros_node, waypoints):
         super().__init__(name='MoveToWaypoint')
-        self.ros_node        = node
-        self.waypoints       = waypoints
-        self.current_index   = 0
-        self.robot_x         = 0.0
-        self.robot_y         = 0.0
-        self.robot_yaw       = 0.0
+        self.ros_node      = ros_node
+        self.waypoints     = waypoints
+        self.current_index = 0
+
+        # Odometry state — updated by the subscriber callback below.
+        # Start as None so update() can detect "not ready yet".
+        self.robot_x   = None
+        self.robot_y   = None
+        self.robot_yaw = None
 
         self.publisher = self.ros_node.create_publisher(
             TwistStamped, '/cmd_vel', 10)
+
         self.ros_node.create_subscription(
             Odometry, '/odom', self._odom_callback, 10)
 
     def _odom_callback(self, msg):
+        """Extract (x, y, yaw) from the Odometry message."""
         self.robot_x = msg.pose.pose.position.x
         self.robot_y = msg.pose.pose.position.y
+
+        # Convert the quaternion to a yaw angle.
+        # The quaternion fields are (x, y, z, w).
         q = msg.pose.pose.orientation
-        self.robot_yaw = math.atan2(
-            2 * (q.w * q.z + q.x * q.y),
-            1 - 2 * (q.y * q.y + q.z * q.z))
+        # yaw = atan2(2*(w*z + x*y),  1 - 2*(y² + z²))
+        siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+        cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+        self.robot_yaw = math.atan2(siny_cosp, cosy_cosp)
 
     def update(self):
-        # TODO 1c: Navigate to waypoints in sequence
+        # ------------------------------------------------------------------
+        # TODO 1c — implement waypoint navigation.
         #
-        # 1. If all waypoints are done (self.current_index >= len):
-        #    Stop the robot and return SUCCESS.
+        # Step 1: Guard — if odometry has not arrived yet (self.robot_x is
+        #         None), return Status.RUNNING to wait quietly.
         #
-        # 2. Get the current target waypoint:
-        #    target_x, target_y = self.waypoints[self.current_index]
+        # Step 2: Guard — if all waypoints are done, return Status.FAILURE
+        #         (the deliberative branch is finished).
+        #         Condition: self.current_index >= len(self.waypoints)
         #
-        # 3. Compute distance to waypoint:
-        #    dx = target_x - self.robot_x
-        #    dy = target_y - self.robot_y
-        #    distance = math.sqrt(dx*dx + dy*dy)
+        # Step 3: Get the current target.
+        #             target_x, target_y = self.waypoints[self.current_index]
         #
-        # 4. If distance < WAYPOINT_TOLERANCE:
-        #    Log that the waypoint was reached, advance self.current_index
-        #    Return SUCCESS
+        # Step 4: Compute displacement and Euclidean distance.
+        #             dx = target_x - self.robot_x
+        #             dy = target_y - self.robot_y
+        #             distance = math.sqrt(dx**2 + dy**2)
         #
-        # 5. Otherwise: compute angle to waypoint and turn toward it:
-        #    angle_to_target = math.atan2(dy, dx)
-        #    angle_error = angle_to_target - self.robot_yaw
-        #    Normalise angle_error to [-pi, pi]:
-        #      while angle_error >  math.pi: angle_error -= 2*math.pi
-        #      while angle_error < -math.pi: angle_error += 2*math.pi
+        # Step 5: Arrival check.
+        #         If distance < WAYPOINT_TOLERANCE:
+        #             log a message, increment self.current_index,
+        #             return Status.SUCCESS.
         #
-        #    Publish velocity:
-        #      msg.twist.linear.x  = LINEAR_SPEED
-        #      msg.twist.angular.z = ANGULAR_GAIN * angle_error
-        #    Return RUNNING
+        # Step 6: Compute heading error and drive.
+        #
+        #     angle_to_target = math.atan2(dy, dx)
+        #     angle_error     = angle_to_target - self.robot_yaw
+        #
+        #     # Normalise to [-pi, pi] — without this the robot may spin
+        #     # the long way around.
+        #     while angle_error >  math.pi: angle_error -= 2 * math.pi
+        #     while angle_error < -math.pi: angle_error += 2 * math.pi
+        #
+        #     msg = TwistStamped()
+        #     msg.header.stamp        = self.ros_node.get_clock().now().to_msg()
+        #     msg.twist.linear.x      = LINEAR_SPEED
+        #     msg.twist.angular.z     = ANGULAR_GAIN * angle_error
+        #     self.publisher.publish(msg)
+        #
+        #     return Status.RUNNING
+        # ------------------------------------------------------------------
 
-        return py_trees.common.Status.RUNNING  # replace with full implementation
-
-    def _stop(self):
-        msg = TwistStamped()
-        msg.header.stamp = self.ros_node.get_clock().now().to_msg()
-        self.publisher.publish(msg)
+        raise NotImplementedError("TODO 1c: implement MoveToWaypoint.update()")

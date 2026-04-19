@@ -1,161 +1,177 @@
-#!/usr/bin/env python3
 """
-task2_tree.py  —  STUDENT TASK 2
+task2_tree.py
+=============
+Assemble the leaf behaviours from task1_behaviours.py into a behavior tree
+and tick it at a fixed rate from a ROS 2 node.
 
-Goal: Assemble the leaf behaviours from Task 1 into a complete behavior tree
-      that demonstrates hybrid reactive-deliberative architecture.
+Official docs to read before starting:
+  Composites (Sequence, Selector/Fallback, memory parameter):
+    https://py-trees.readthedocs.io/en/devel/composites.html
+  BehaviourTree and ticking:
+    https://py-trees.readthedocs.io/en/devel/trees.html
+  Printing tree state to the console:
+    https://py-trees.readthedocs.io/en/devel/display.html
 
-The tree structure you will build:
+py_trees version note
+---------------------
+Run the following to check which OR-composite name exists on your machine:
 
-    Root  [Fallback]
-    ├── Reactive  [Sequence]          ← checked FIRST every tick
-    │   ├── IsObstacleTooClose        ← Condition: is danger ahead?
-    │   └── StopRobot                 ← Action: stop immediately
-    └── Deliberative  [Sequence]      ← only runs if no obstacle
-        └── MoveToWaypoint            ← Action: navigate to next waypoint
+    python3 -c "import py_trees; print(py_trees.__version__)"
+    python3 -c "import py_trees; print(dir(py_trees.composites))"
 
-How a Fallback works:
-    Tick children left to right.
-    Return SUCCESS as soon as any child succeeds.
-    Return FAILURE only if all children fail.
-
-How a Sequence works:
-    Tick children left to right.
-    Return FAILURE as soon as any child fails.
-    Return SUCCESS only if all children succeed.
-
-Why this implements hybrid architecture:
-    Every tick, the Fallback tries the Reactive branch first.
-    - If IsObstacleTooClose returns SUCCESS → StopRobot runs → done.
-      The deliberative branch never runs during danger.
-    - If IsObstacleTooClose returns FAILURE (clear path) → Reactive Sequence
-      fails → Fallback tries Deliberative branch → robot navigates.
-
-    The reactive layer overrides the deliberative layer automatically,
-    with no explicit priority code needed. This is the key property of
-    behavior trees for hybrid architecture.
-
-The tree is ticked at a fixed rate by a ROS2 timer.
-
-Questions to answer in your report:
-    Q1. Draw the behavior tree you implemented. Label each node as
-        Condition, Action, Sequence, or Fallback.
-    Q2. Place an obstacle in front of the robot while it is navigating.
-        Which branch of the tree fires? Which branch is suppressed?
-        Why does this happen automatically without any if/else code?
-    Q3. What is the difference between the reactive and deliberative
-        branches in terms of:
-        (a) how fast they respond to new sensor data?
-        (b) how much reasoning they do?
-    Q4. What would you need to add to make the robot navigate AROUND
-        the obstacle instead of just stopping?
-    Q5. How does the hybrid architecture in your tree relate to the
-        three-layer model (Strategic / Tactical / Reactive) from
-        the lecture? Which layer is missing here, and what would it do?
+In py_trees 2.x the class may be listed as 'Selector', 'Fallback', or both
+(one is an alias for the other). Use whichever name appears.
+The 'memory=False' keyword argument is REQUIRED in 2.x — see the Composites
+docs for what it means and why it matters here.
 """
 
+import py_trees
 import rclpy
 from rclpy.node import Node
-import py_trees
 
-from hybrid_assignment.task1_behaviours import (
+from task1_behaviours import (
     IsObstacleTooClose,
-    StopRobot,
     MoveToWaypoint,
+    StopRobot,
 )
 
-# ── Waypoints ─────────────────────────────────────────────────
-# (x, y) coordinates in the Webots world frame.
-# These are positions inside the break room — adjust if needed.
-# The robot starts at approximately (0, 0).
+# ---------------------------------------------------------------------------
+# Waypoints — (x, y) in the Webots world frame.
+# The robot visits them in order, then stops.
+# Adjust these to suit your break_room.wbt layout.
+# ---------------------------------------------------------------------------
 WAYPOINTS = [
-    ( 1.0,  0.0),   # move right
-    ( 1.0,  1.5),   # move up
-    ( 0.0,  1.5),   # move left
-    ( 0.0,  0.0),   # return to start
+    ( 1.0,  0.0),
+    ( -3.30,  4.0),
+    (-5.0,  2.0),
+    (-1.0,  0.0),
 ]
 
-# Tree tick rate
-TICK_RATE_HZ = 10.0
+TICK_RATE_HZ = 10   # how many times per second the tree is ticked
 
 
-class HybridBehaviourTree(Node):
+# ---------------------------------------------------------------------------
+# ROS 2 node
+# ---------------------------------------------------------------------------
+
+class BehaviourTreeNode(Node):
+    """
+    A ROS 2 node that owns the behavior tree and ticks it at TICK_RATE_HZ.
+
+    The tree is built entirely inside __init__ — follow the TODO comments
+    in order. After __init__ returns the tree is running; you do not need
+    to change _tick().
+    """
 
     def __init__(self):
-        super().__init__('hybrid_behaviour_tree')
+        super().__init__('behaviour_tree_node')
 
-        # ── TODO 2a: Create the leaf behaviours ───────────────
-        # Instantiate the three behaviours from Task 1.
-        # Each one needs 'self' (the ROS2 node) as its first argument.
+        # ------------------------------------------------------------------
+        # TODO 2a — Instantiate the three leaf behaviours.
+        #
+        # Each class is imported from task1_behaviours.  Pass `self` as the
+        # ros_node argument so they can create subscribers and publishers.
         # MoveToWaypoint also needs the WAYPOINTS list.
         #
-        # Example:
-        #   obstacle_check = IsObstacleTooClose(self)
-        #   stop           = StopRobot(self)
-        #   navigate       = MoveToWaypoint(self, WAYPOINTS)
+        # Hint:
+        #     obstacle_check = IsObstacleTooClose(...)
+        #     stop           = StopRobot(...)
+        #     navigate       = MoveToWaypoint(...)
+        # ------------------------------------------------------------------
 
-        # TODO: create the three behaviours here
-
-        # ── TODO 2b: Build the reactive branch ───────────────
-        # A Sequence that runs: check obstacle → stop robot
-        # Use py_trees.composites.Sequence(name='...', memory=False)
-        # Then call .add_children([...]) with the two behaviours.
+        # ------------------------------------------------------------------
+        # TODO 2b — Build the REACTIVE branch.
         #
-        # memory=False means the sequence re-evaluates from the start
-        # every tick — important for reactive behaviour.
-
-        # TODO: create reactive_branch = Sequence(...)
-
-        # ── TODO 2c: Build the deliberative branch ────────────
-        # A Sequence that runs: move to waypoint
-        # Just one child for now — MoveToWaypoint handles the full
-        # waypoint sequence internally.
-
-        # TODO: create deliberative_branch = Sequence(...)
-
-        # ── TODO 2d: Build the root Fallback ─────────────────
-        # A Fallback with two children: reactive first, deliberative second.
-        # Use py_trees.composites.Fallback(name='Root', memory=False)
-        # Then call .add_children([reactive_branch, deliberative_branch])
-
-        # TODO: create root = Fallback(...)
-
-        # ── TODO 2e: Create and start the tree ───────────────
-        # Create the behaviour tree and set up the tick timer.
+        # This is a Sequence containing [obstacle_check, stop].
+        # The condition MUST be first — if it returns FAILURE (clear path)
+        # the Sequence stops immediately and StopRobot is never called.
         #
-        # self.tree = py_trees.trees.BehaviourTree(root)
-        # self.tree.setup(timeout=15)
+        # Required keyword: memory=False
+        # See: https://py-trees.readthedocs.io/en/devel/composites.html
         #
-        # Create a timer that calls self._tick every 1/TICK_RATE_HZ seconds:
-        # self.create_timer(1.0 / TICK_RATE_HZ, self._tick)
+        # Hint:
+        #     reactive_branch = py_trees.composites.Sequence(
+        #         name='Reactive', memory=False)
+        #     reactive_branch.add_children([obstacle_check, stop])
+        # ------------------------------------------------------------------
 
-        # TODO: create and start the tree here
+        # ------------------------------------------------------------------
+        # TODO 2c — Build the DELIBERATIVE branch.
+        #
+        # This is also a Sequence, but it contains only [navigate].
+        # Using a Sequence here (rather than adding navigate directly to the
+        # root) makes it easy to add more deliberative steps later.
+        #
+        # Hint:
+        #     deliberative_branch = py_trees.composites.Sequence(
+        #         name='Deliberative', memory=False)
+        #     deliberative_branch.add_children([navigate])
+        # ------------------------------------------------------------------
 
-        self.get_logger().info(
-            'HybridBehaviourTree started.\n'
-            f'  Navigating {len(WAYPOINTS)} waypoints.\n'
-            '  Place an obstacle in front of the robot to test\n'
-            '  the reactive layer.'
-        )
+        # ------------------------------------------------------------------
+        # TODO 2d — Build the ROOT composite.
+        #
+        # This must be a Selector (or Fallback — same class, see version note
+        # at the top of this file).  Its children are:
+        #     [reactive_branch, deliberative_branch]
+        # ORDER MATTERS: the reactive branch must be first so it is checked
+        # before the deliberative branch on every tick.
+        #
+        # Hint:
+        #     root = py_trees.composites.Selector(   # or Fallback
+        #         name='Root', memory=False)
+        #     root.add_children([reactive_branch, deliberative_branch])
+        # ------------------------------------------------------------------
+
+        # ------------------------------------------------------------------
+        # TODO 2e — Wrap the root in a BehaviourTree, set it up, then
+        #           create a ROS 2 timer to call self._tick at TICK_RATE_HZ.
+        #
+        # BehaviourTree.setup() calls setup() on every node in the tree.
+        # It must be called before the first tick.
+        #
+        # Hint:
+        #     self.tree = py_trees.trees.BehaviourTree(root)
+        #     self.tree.setup(timeout=15)
+        #     self.create_timer(1.0 / TICK_RATE_HZ, self._tick)
+        # ------------------------------------------------------------------
+
+        self.get_logger().info('Behaviour tree ready — starting to tick.')
 
     def _tick(self):
-        """Called every timer cycle — ticks the behaviour tree once."""
-        # TODO 2f: Tick the tree and log the result
+        # ------------------------------------------------------------------
+        # TODO 2f — Tick the tree and (optionally) print its current state.
         #
-        # self.tree.tick()
+        # self.tree.tick() advances the tree by one step.
         #
-        # Optional: print the tree state for debugging:
-        # print(py_trees.display.unicode_tree(
-        #     root=self.tree.root, show_status=True))
-        pass
+        # py_trees.display.unicode_tree() returns a multi-line string that
+        # shows the tree structure and the status of each node after the tick.
+        # The show_status=True argument adds ✓/✗/… symbols.
+        # See: https://py-trees.readthedocs.io/en/devel/display.html
+        #
+        # Hint:
+        #     self.tree.tick()
+        #     print(py_trees.display.unicode_tree(
+        #         root=self.tree.root, show_status=True))
+        # ------------------------------------------------------------------
 
+        raise NotImplementedError("TODO 2f: implement _tick()")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 def main(args=None):
     rclpy.init(args=args)
-    node = HybridBehaviourTree()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = BehaviourTreeNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':
