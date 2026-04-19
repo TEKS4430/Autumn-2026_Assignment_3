@@ -10,7 +10,7 @@ using a behavior tree. The robot navigates to a sequence of waypoints
 (reactive layer). The two layers are composed automatically by the tree
 structure — no explicit priority code is needed.
  
-This connects directly to the lecture concept of hybrid architecture:
+This connects concept of hybrid architecture:
 > "Real CPS typically use hybrid architectures: a fast reactive layer handles
 > emergencies, while a deliberative layer handles goals and planning."
  
@@ -54,25 +54,14 @@ the next waypoint.
  
 ### Setup
  
-**Install py_trees** (do this once inside the Docker container):
- 
-```bash
-sudo apt install -y \
-    ros-jazzy-py-trees \
-    ros-jazzy-py-trees-ros-interfaces \
-    ros-jazzy-py-trees-ros
-```
- 
-**Build the new package** (the sensing_assignment package from Task 2 must
-already be built — it provides the robot driver and URDF):
  
 ```bash
 cd /ros2_ws
-colcon build --symlink-install --packages-select hybrid_assignment
+colcon build 
 source install/setup.bash
 ```
  
-**Open Webots** with the same break_room world from Assignment 1.
+**Open Webots** with the world file under the src, break_room.wbt .
  
 **Launch:**
  
@@ -91,9 +80,6 @@ it will begin navigating automatically.
 |---|---|
 | `WebotsController` | Connects Webots to ROS2. Provides `/scan`, `/odom`. Accepts `/cmd_vel`. |
 | `task2_tree` | **Your behavior tree node** — ticks the tree at 10 Hz |
- 
-The `sensing_assignment` nodes (noise_injector, motion_controller, task filters)
-are **not launched** — they are not needed for this assignment.
  
 ---
  
