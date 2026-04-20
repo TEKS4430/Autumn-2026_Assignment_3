@@ -288,6 +288,8 @@ Document how you used AI tools during this assignment. Include:
 - Any prompts that were particularly helpful.
 - Cases where the AI was wrong or misleading, and how you detected that.
 
+[See more detailed instructions from Task 2](https://github.com/TEKS4430/Spring-2026_Task_2/tree/main#part-b-use-of-ai-tools-and-self-reflection)
+
 ---
 
 ## Submission Instructions
