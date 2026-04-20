@@ -281,9 +281,13 @@ hybrid_assignment/
  
 ---
 
-## Part B
+## Part B: Use of AI tools and self-reflection
 
-Document how you used AI tools during this assignment. Include:
+In part B, you will reflect on the new skills you have learned and analyze your own work and learning process. You will consider what technical skills you learned while completing part A, what tools you used, why you chose to use them, and what benefits or challenges were associated with their use.
+
+Include insight on:
+- What kind of challenges did you encounter while doing the assignment.
+- What did you learn while doing the assignment.
 - Which tools you used and for what purpose.
 - Any prompts that were particularly helpful.
 - Cases where the AI was wrong or misleading, and how you detected that.
@@ -292,9 +296,11 @@ Document how you used AI tools during this assignment. Include:
 
 ---
 
-## Submission Instructions
+## Returning instructions
 
 Create a video covering Parts A and B:
 - Demonstrate the environment running (Webots + ROS 2 launch).
 - Show the robot navigating waypoints and stopping for an obstacle.
 - Explain how you used AI in the assignment.
+
+[See more detailed instructions from Task 2](https://github.com/TEKS4430/Spring-2026_Task_2/tree/main#returning-instructions)
