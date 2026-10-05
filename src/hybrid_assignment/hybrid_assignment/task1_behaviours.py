@@ -60,21 +60,23 @@ class IsObstacleTooClose(py_trees.behaviour.Behaviour):
 
     def update(self):
         # ------------------------------------------------------------------
-        # TODO 1a — implement the obstacle check.
+        # Step 1a — implement the obstacle check.
         #
         # Step 1: Guard — if no scan has arrived yet, return FAILURE so the
         #         robot does not falsely stop on startup.
         #
-        # Step 2: Compute how many indices cover FORWARD_ARC_DEG degrees:
-        #             total = len(self.latest_scan.ranges)
-        #             arc   = int(FORWARD_ARC_DEG / 360 * total)
+        # Step 2: Convert the arc half-width to radians:
+        #             half_arc = math.radians(FORWARD_ARC_DEG)
         #
-        # Step 3: Combine the front-left and front-right index ranges:
-        #             indices = list(range(arc)) + list(range(total - arc, total))
+        # Step 3: Loop over every reading and work out its direction:
+        #             scan = self.latest_scan
+        #             for i, r in enumerate(scan.ranges):
+        #                 angle = scan.angle_min + i * scan.angle_increment
+        #                 angle = math.atan2(math.sin(angle), math.cos(angle))
+        #         The atan2 line wraps the angle into -pi … +pi, so 0 rad is
+        #         straight ahead. Skip readings with abs(angle) > half_arc.
         #
-        # Step 4: For each index check the range value:
-        #             r = self.latest_scan.ranges[i]
-        #         Skip readings that are inf (open space) or <= 0 (invalid).
+        # Step 4: Skip readings that are inf (open space) or <= 0 (invalid).
         #         If r < OBSTACLE_THRESHOLD → return Status.SUCCESS immediately.
         #
         # Step 5: If the loop finishes without finding anything close,

@@ -144,15 +144,20 @@ interrupts it.
  
 This is a **Condition** node. It reads the latest LiDAR scan and checks
 whether anything in the forward arc is closer than `OBSTACLE_THRESHOLD`.
+
+#### note: you can view the lidar point cloud from View -> Optional Rendering -> Show Lidar Point Cloud
  
 - Return `SUCCESS` if an obstacle is detected.
 - Return `FAILURE` if the path is clear.
 Hints:
 - `self.latest_scan` is `None` until the first scan arrives — guard against
   this or the node crashes on the first tick.
-- `self.latest_scan.ranges` is a list of float distances, one per degree.
-  Index 0 is directly in front of the robot.
+- `self.latest_scan.ranges` holds 360 distances, one per degree. Do not
+  assume which index points forward — in this simulation index 0 points
+  *behind* the robot. Each reading's direction in radians is
+  `angle_min + i * angle_increment`; wrap it to −π…π and 0 is straight ahead.
 - Readings of `inf` mean no obstacle in that direction — skip them.
+- Only check readings whose angle is within ±`FORWARD_ARC_DEG` of straight ahead.
 - Check the front-left arc (indices `0 … arc-1`) and the front-right arc
   (indices `total-arc … total-1`) to cover the full forward cone.
 - Use the constants `FORWARD_ARC_DEG` and `OBSTACLE_THRESHOLD` at the top
@@ -225,7 +230,8 @@ Common problems and fixes:
 | `AttributeError: module 'py_trees.composites' has no attribute 'Fallback'` | Use `Selector` instead — see version note |
 | `TypeError: __init__() missing keyword argument 'memory'` | Add `memory=False` to every composite |
 | Robot never moves | `IsObstacleTooClose` always returns `SUCCESS` — check the `inf` guard and arc logic |
-| Robot drives into walls | `IsObstacleTooClose` always returns `FAILURE` — check that the arc indices wrap correctly |
+| Robot drives into walls | `IsObstacleTooClose` always returns `FAILURE` — check that you compute each reading's angle from `angle_min` and `angle_increment` |
+| Robot spins when something is behind it | You are treating index 0 as straight ahead — use the angle instead |
 | `AttributeError: 'NoneType'` on first tick | Guard against `self.latest_scan is None` at the start of `update()` |
  
 ---
