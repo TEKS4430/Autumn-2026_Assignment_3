@@ -1,6 +1,6 @@
 # Autumn-2026 Task 3 — Hybrid Reactive-Deliberative Architecture
  
-## Part A
+## Part A: Studying and technical implementation — 4 points
  
 ### Overview
  
